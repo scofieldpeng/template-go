@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"github.com/labstack/echo"
 )
 
 // tplT 定义template模型
@@ -93,7 +94,24 @@ func (t *tplT) addDefine(tplName, content string) string {
 
 // transferTemplate 将模板中的{{template xxx}}默认转化为{{template xxx .}}
 func (t *tplT) transferTemplate(content string) string {
-	reg := regexp.MustCompile(fmt.Sprintf(`%stemplate\s(\S*)%s`, t.delimeter.left, t.delimeter.right))
+	leftDelimeter := ""
+	for _,value := range []byte(t.delimeter.left) {
+		if string(value) == "[" {
+			leftDelimeter += `\[`
+		} else {
+			leftDelimeter += string(value)
+		}
+	}
+	rightDelimeter := ""
+	for _,value := range []byte(t.delimeter.right) {
+		// TODO 这里应该做更多的判断,用switch来做
+		if string(value) == "]" {
+			rightDelimeter += `\]`
+		} else {
+			rightDelimeter += string(value)
+		}
+	}
+	reg := regexp.MustCompile(fmt.Sprintf(`%stemplate ([^%s]*)%s`, leftDelimeter,rightDelimeter,rightDelimeter))
 	return reg.ReplaceAllString(content, fmt.Sprintf(`%stemplate "$1" .%s`, t.delimeter.left, t.delimeter.right))
 }
 
@@ -143,12 +161,12 @@ func (t *tplT) parseFiles(tmpTemplate *template.Template, tplpaths ...string) (*
 		// 解析模板
 		var tmpl *template.Template
 		if tmpTemplate == nil {
-			tmpTemplate = template.New(filename)
+			tmpTemplate = template.New(filename).Delims(t.delimeter.left,t.delimeter.right)
 		}
 		if filename == tmpTemplate.Name() {
 			tmpl = tmpTemplate
 		} else {
-			tmpl = tmpTemplate.New(filename)
+			tmpl = template.New(filename).Delims(t.delimeter.left,t.delimeter.right)
 		}
 		_, err = tmpl.Funcs(template.FuncMap(t.fns)).Parse(t.tplParsedMap[tplpath])
 		if err != nil {
@@ -162,7 +180,7 @@ func (t *tplT) parseFiles(tmpTemplate *template.Template, tplpaths ...string) (*
 }
 
 // Render 渲染函数
-func (t *tplT) Render(w io.Writer, tplName string, data interface{}) error {
+func (t tplT) Render(w io.Writer, tplName string, data interface{},ctx echo.Context) error {
 	return t.template.ExecuteTemplate(w, tplName, data)
 }
 
